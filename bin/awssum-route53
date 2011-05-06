@@ -33,12 +33,13 @@ my $DEBUG = 0;
     }
 
     if ( $command eq q{list} ) { 
-        # list hosted zones
         cmd_list( $route53, $opt );
     }
-    elsif ( $command eq q{create} ) { 
-        # create a new hosted zone
+    elsif ( $command eq q{create} ) {
         cmd_create( $route53, $opt );
+    }
+    elsif ( $command eq q{list-records} ) {
+        cmd_list_records( $route53, $opt );
     }
     else {
         usage( q{Unknown Command} );
@@ -80,6 +81,27 @@ sub cmd_create {
     }
 }
 
+sub cmd_list_records {
+    my ($route53, $opt) = @_;
+
+    my $res = $route53->list_resource_record_sets({
+        ZoneId => $opt->{id}
+    });
+    debug_pp( q{Create}, $res );
+
+    if ( $res->{_awssum}{ok} ) {
+        foreach my $set ( @{$res->{ResourceRecords}} ) {
+            foreach my $value ( @{$set->{Values}} ) {
+                print qq{$set->{Name} $set->{TTL} $set->{Type} $value\n};
+            }
+        }
+    }
+    else {
+        error($res);
+    }
+
+}
+
 ## ----------------------------------------------------------------------------
 
 sub error {
@@ -109,14 +131,15 @@ sub verbose {
 sub get_opt {
     my $opt = {};
 
-    # Getopt::Mixed::init( q{n=s name>n r=s reference>r c=s comment>c f=s filename>f v verbose>v d debug>d});
+    # all the long and short option names
     my @options = qw(
-        name=s n>name
-        reference=s r>reference
-        comment=s c>comment
-        filename=s f>filename
-        verbose v>verbose
-        debug d>debug
+        name=s        n>name
+        id=s          i>id
+        reference=s   r>reference
+        comment=s     c>comment
+        filename=s    f>filename
+        verbose       v>verbose
+        debug         d>debug
     );
     Getopt::Mixed::init( join(q{ }, @options) );
 
