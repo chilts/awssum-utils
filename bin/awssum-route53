@@ -41,6 +41,12 @@ my $DEBUG = 0;
     elsif ( $command eq q{list-records} ) {
         cmd_list_records( $route53, $opt );
     }
+    elsif ( $command eq q{create-record} ) {
+        cmd_create_record( $route53, $opt );
+    }
+    elsif ( $command eq q{delete-record} ) {
+        cmd_delete_record( $route53, $opt );
+    }
     else {
         usage( q{Unknown Command} );
     }
@@ -50,11 +56,12 @@ sub cmd_list {
     my ($route53, $opt) = @_;
 
     my $res = $route53->list_hosted_zones({});
+    debug_pp( q{List Zones}, $res );
 
     if ( $res->{_awssum}{ok} ) {
         # loop through all the zones
         foreach my $zone ( @{$res->{HostedZones}} ) {
-            print "Name=$zone->{Name}, Id=$zone->{Id}\n";
+            print "$zone->{Name} $zone->{Id}\n";
         }
     }
     else {
@@ -99,14 +106,57 @@ sub cmd_list_records {
     else {
         error($res);
     }
+}
 
+sub cmd_create_record {
+    my ($route53, $opt) = @_;
+
+    my $res = $route53->change_resource_record_sets({
+        ZoneId  => $opt->{id},
+        Action  => q{CREATE},
+        Name    => $opt->{name},
+        Type    => $opt->{type},
+        TTL     => $opt->{ttl},
+        Value   => $opt->{value},
+        Comment => $opt->{comment},
+    });
+    debug_pp( q{Create}, $res );
+
+    if ( $res->{_awssum}{ok} ) {
+
+    }
+    else {
+        error($res);
+    }
+}
+
+sub cmd_delete_record {
+    my ($route53, $opt) = @_;
+
+    my $res = $route53->change_resource_record_sets({
+        ZoneId  => $opt->{id},
+        Action  => q{DELETE},
+        Name    => $opt->{name},
+        Type    => $opt->{type},
+        TTL     => $opt->{ttl},
+        Value   => $opt->{value},
+        Comment => $opt->{comment},
+    });
+    debug_pp( q{Create}, $res );
+
+    if ( $res->{_awssum}{ok} ) {
+
+    }
+    else {
+        error($res);
+    }
 }
 
 ## ----------------------------------------------------------------------------
 
 sub error {
     my ($result) = @_;
-    print STDERR qq{$result->{code}: $result->{message}\n};
+    print STDERR qq{$result->{_awssum}{error}: $result->{_awssum}{message}\n};
     exit 2;
 }
 
@@ -138,8 +188,11 @@ sub get_opt {
         reference=s   r>reference
         comment=s     c>comment
         filename=s    f>filename
-        verbose       v>verbose
-        debug         d>debug
+        type=s        t>type
+        ttl=s         l>ttl
+        value=s       v>value
+        verbose
+        debug
     );
     Getopt::Mixed::init( join(q{ }, @options) );
 
