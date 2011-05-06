@@ -1,0 +1,183 @@
+#!/usr/bin/perl
+## ----------------------------------------------------------------------------
+
+use strict;
+use warnings;
+use Data::Dump qw(pp);
+use Config::Simple;
+use Getopt::Mixed "nextOption";
+use AwsSum::Amazon::Route53;
+
+my $VERBOSE = 0;
+my $DEBUG = 0;
+
+## ----------------------------------------------------------------------------
+
+{
+    # firstly, get the various options and config options
+    my $opt = get_opt();
+    my $cfg = get_cfg( $opt );
+
+    debug_pp( q{Options}, $opt );
+    debug_pp( q{Config}, $cfg );
+
+    my $route53 = AwsSum::Amazon::Route53->new();
+    $route53->access_key_id( $cfg->{'Amazon-AwsAccessKeyId'} );
+    $route53->secret_access_key( $cfg->{'Amazon-AwsSecretAccessKey'} );
+    $route53->account_number( $cfg->{'Amazon-AccountNumber'} )
+        if $cfg->{'Amazon-AccountNumber'};
+
+    my $command = shift @ARGV;
+    unless ( defined $command ) {
+        usage( q{Please specify a command} );
+    }
+
+    if ( $command eq q{list} ) { 
+        # list hosted zones
+        cmd_list( $route53, $opt );
+    }
+    elsif ( $command eq q{create} ) { 
+        # create a new hosted zone
+        cmd_create( $route53, $opt );
+    }
+    else {
+        usage( q{Unknown Command} );
+    }
+}
+
+sub cmd_list {
+    my ($route53, $opt) = @_;
+
+    my $res = $route53->list_hosted_zones({});
+
+    if ( $res->{_awssum}{ok} ) {
+        # loop through all the zones
+        foreach my $zone ( @{$res->{HostedZones}} ) {
+            print "Name=$zone->{Name}, Id=$zone->{Id}\n";
+        }
+    }
+    else {
+        error($res);
+    }
+}
+
+sub cmd_create {
+    my ($route53, $opt) = @_;
+
+    my $res = $route53->create_hosted_zone({
+        ZoneName => $opt->{name},
+        $opt->{reference} ? ( CallerReference => $opt->{reference} ) : (),
+        $opt->{comment} ? ( Comment => $opt->{comment} ) : (),
+    });
+    debug_pp( q{Create}, $res );
+
+    if ( $res->{_awssum}{ok} ) {
+        # do something here
+        print "all ok";
+    }
+    else {
+        error($res);
+    }
+}
+
+## ----------------------------------------------------------------------------
+
+sub error {
+    my ($result) = @_;
+    print STDERR qq{$result->{code}: $result->{message}\n};
+    exit 2;
+}
+
+sub debug {
+    my ($msg, $pp) = @_;
+    print qq{$msg\n} if $DEBUG;
+    print STDERR qq{$msg:}
+}
+
+sub debug_pp {
+    my ($name, $pp) = @_;
+    return unless $DEBUG;
+    print STDERR qq{$name = };
+    pp($pp);
+}
+
+sub verbose {
+    my ($msg) = @_;
+    print qq{$msg\n} if $VERBOSE;
+}
+
+sub get_opt {
+    my $opt = {};
+
+    # Getopt::Mixed::init( q{n=s name>n r=s reference>r c=s comment>c f=s filename>f v verbose>v d debug>d});
+    my @options = qw(
+        name=s n>name
+        reference=s r>reference
+        comment=s c>comment
+        filename=s f>filename
+        verbose v>verbose
+        debug d>debug
+    );
+    Getopt::Mixed::init( join(q{ }, @options) );
+
+    # loop through all options
+    while ( my ($name, $value) = nextOption() ) {
+        $opt->{$name} = $value;
+    }
+    Getopt::Mixed::cleanup();
+
+    # process the boolean options
+    foreach my $name ( qw(verbose debug) ) {
+        $opt->{$name} = exists $opt->{$name} ? 1 : 0;
+    }
+
+    # set these globals
+    $DEBUG = $opt->{debug};
+    $VERBOSE = $opt->{verbose};
+
+    return $opt;
+}
+
+sub get_cfg {
+    my ($option) = @_;
+
+    my $cfg = {};
+
+    # so, read either the normal config or that defined on the command line
+    my $filename = $option->{f} || $ENV{AWSSUM_ROUTE53_CFG} || qq{$ENV{HOME}/.awssum};
+    Config::Simple->import_from( $filename, $cfg );
+
+    return $cfg;
+}
+
+sub usage {
+    my ($err) = @_;
+
+    if ( defined $err ) {
+        print "Error: $err\n";
+    }
+
+    print STDERR <<"EOF";
+Usage: $0 command [opts...]
+
+Commands:
+
+  * list
+  * create          --name <name> [--reference <reference> --comment <comment>]
+
+Options:
+
+  * -n, --name                the domain name. e.g. changelog.at
+  * -r, --reference           a unique string relevant to this action
+  * -c, --comment             a string you'd like to store with this action
+  * -f, --filename            the config file to use (default: ~/.awssum)
+
+See <http://github.com/appsattic/awssum-utils/> for further information.
+Report bugs to <chilts\@appsattic.com>
+EOF
+
+    # exit differently if we were called in error
+    exit $err ? 2 : 0;
+}
+
+## ----------------------------------------------------------------------------
