@@ -11,6 +11,10 @@ use AwsSum::Amazon::Route53;
 my $VERBOSE = 0;
 my $DEBUG = 0;
 
+my $option_type = {
+    values => q{array},
+};
+
 ## ----------------------------------------------------------------------------
 
 {
@@ -73,17 +77,13 @@ sub cmd_create {
     my ($route53, $opt) = @_;
 
     my $res = $route53->create_hosted_zone({
-        ZoneName => $opt->{name},
+        ZoneName => $opt->{zone},
         $opt->{reference} ? ( CallerReference => $opt->{reference} ) : (),
         $opt->{comment} ? ( Comment => $opt->{comment} ) : (),
     });
     debug_pp( q{Create}, $res );
 
-    if ( $res->{_awssum}{ok} ) {
-        # do something here
-        print "all ok";
-    }
-    else {
+    unless ( $res->{_awssum}{ok} ) {
         error($res);
     }
 }
@@ -117,7 +117,7 @@ sub cmd_create_record {
         Name    => $opt->{name},
         Type    => $opt->{type},
         TTL     => $opt->{ttl},
-        Value   => $opt->{value},
+        Values  => $opt->{values},
         Comment => $opt->{comment},
     });
     debug_pp( q{Create}, $res );
@@ -139,7 +139,7 @@ sub cmd_delete_record {
         Name    => $opt->{name},
         Type    => $opt->{type},
         TTL     => $opt->{ttl},
-        Value   => $opt->{value},
+        Values  => $opt->{values},
         Comment => $opt->{comment},
     });
     debug_pp( q{Create}, $res );
@@ -183,6 +183,7 @@ sub get_opt {
 
     # all the long and short option names
     my @options = qw(
+        zone=s        z>zone
         name=s        n>name
         id=s          i>id
         reference=s   r>reference
@@ -190,7 +191,7 @@ sub get_opt {
         filename=s    f>filename
         type=s        t>type
         ttl=s         l>ttl
-        value=s       v>value
+        values=s      v>values
         verbose
         debug
     );
@@ -198,7 +199,12 @@ sub get_opt {
 
     # loop through all options
     while ( my ($name, $value) = nextOption() ) {
-        $opt->{$name} = $value;
+        if ( exists $option_type->{$name} && $option_type->{$name} eq q{array} ) {
+            push @{$opt->{$name}}, $value;
+        }
+        else {
+            $opt->{$name} = $value;
+        }
     }
     Getopt::Mixed::cleanup();
 
@@ -239,21 +245,31 @@ Usage: $0 command [opts...]
 Commands:
 
   * list
-  * create          --name <name> [--reference <reference> --comment <comment>]
+  * create          --zone <ZoneName>
+  * list-records    --id <ZoneId>
+  * create-record   --id <ZoneId> --name <ZoneName> --type <Type> --ttl <TTL> --values <Value> [--values <Value> ...] --comment <Comment>
+  * delete-record   --id <ZoneId> --name <ZoneName> --type <Type> --ttl <TTL> --values <Value> [--values <Value> ...] --comment <Comment>
+  * status          --id <ChangeId>
 
 Options:
 
-  * -n, --name                the domain name. e.g. changelog.at
-  * -r, --reference           a unique string relevant to this action
-  * -c, --comment             a string you'd like to store with this action
-  * -f, --filename            the config file to use (default: ~/.awssum)
+  -z, --zone                the zone/domain name. e.g. changelog.at
+  -n, --name                the (sub-)domain name. e.g. changelog.at, www.changelog.at
+  -r, --reference           a unique string relevant to this action
+  -c, --comment             a string you'd like to store with this action
+  -t, --type                resource record type e.g. A, AAAA, CNAME, MX, NS, PTR, SOA, SPF, SRV, TXT
+  -l, --ttl                 time to live for this resource record
+  -v, --values              the values of this resource record (one or more)
+  -f, --filename            the config file to use (default: ~/.awssum)
+      --verbose             turn verbose mode on
+      --debug               turn debug mode on
 
 See <http://github.com/appsattic/awssum-utils/> for further information.
-Report bugs to <chilts\@appsattic.com>
+Report bugs to <chilts\@appsattic.com>.
 EOF
 
     # exit differently if we were called in error
-    exit $err ? 2 : 0;
+    exit defined $err ? 2 : 0;
 }
 
 ## ----------------------------------------------------------------------------
