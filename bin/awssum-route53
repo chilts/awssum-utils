@@ -42,6 +42,9 @@ my $option_type = {
     elsif ( $command eq q{create} ) {
         cmd_create( $route53, $opt );
     }
+    elsif ( $command eq q{show} ) {
+        cmd_show( $route53, $opt );
+    }
     elsif ( $command eq q{list-records} ) {
         cmd_list_records( $route53, $opt );
     }
@@ -84,6 +87,32 @@ sub cmd_create {
     debug_pp( q{Create}, $res );
 
     unless ( $res->{_awssum}{ok} ) {
+        error($res);
+    }
+}
+
+sub cmd_show {
+    my ($route53, $opt) = @_;
+
+    my $res = $route53->get_hosted_zone({
+        ZoneId => $opt->{id}
+    });
+    debug_pp( q{Create}, $res );
+
+    if ( $res->{_awssum}{ok} ) {
+        # show some info about the zone first
+        key_value( q{Name}, $res->{HostedZone}{Name} );
+        key_value( q{Id}, $res->{HostedZone}{Id} );
+        key_value( q{CallerReference}, $res->{HostedZone}{CallerReference} );
+
+        # the nameserver
+        key_value( q{NameServer 1}, $res->{DelegationSet}{NameServers}[0] );
+        key_value( q{NameServer 2}, $res->{DelegationSet}{NameServers}[1] );
+        key_value( q{NameServer 3}, $res->{DelegationSet}{NameServers}[2] );
+        key_value( q{NameServer 4}, $res->{DelegationSet}{NameServers}[3] );
+
+    }
+    else {
         error($res);
     }
 }
@@ -178,6 +207,11 @@ sub verbose {
     print qq{$msg\n} if $VERBOSE;
 }
 
+sub key_value {
+    my ($key, $value) = @_;
+    print qq{$key } . ( ' ' x (20 - length $key) ) . qq{ : $value\n};
+}
+
 sub get_opt {
     my $opt = {};
 
@@ -245,11 +279,13 @@ Usage: $0 command [opts...]
 Commands:
 
   * list
-  * create          --zone <ZoneName>
-  * list-records    --id <ZoneId>
-  * create-record   --id <ZoneId> --name <ZoneName> --type <Type> --ttl <TTL> --values <Value> [--values <Value> ...] --comment <Comment>
-  * delete-record   --id <ZoneId> --name <ZoneName> --type <Type> --ttl <TTL> --values <Value> [--values <Value> ...] --comment <Comment>
-  * status          --id <ChangeId>
+  * create          -z <ZoneName>
+  * show            -i <ZoneId>
+  * list-records    -i <ZoneId>
+  * create-record   -i <ZoneId> -n <ZoneName> -t <Type> -l <TTL> -v <Value> [-v <Value> ...] -c <Comment>
+  * delete-record   -i <ZoneId> -n <ZoneName> -t <Type> -l <TTL> -v <Value> [-v <Value> ...] -c <Comment>
+  * status          -i <ChangeId>
+  * inc-soa         -i <ZoneId> -s (rfc|inc)
 
 Options:
 
@@ -260,6 +296,7 @@ Options:
   -t, --type                resource record type e.g. A, AAAA, CNAME, MX, NS, PTR, SOA, SPF, SRV, TXT
   -l, --ttl                 time to live for this resource record
   -v, --values              the values of this resource record (one or more)
+  -s, --soa                 where rfc=YYYYMMDDNN and inc=N (N is incremented in both cases)
   -f, --filename            the config file to use (default: ~/.awssum)
       --verbose             turn verbose mode on
       --debug               turn debug mode on
